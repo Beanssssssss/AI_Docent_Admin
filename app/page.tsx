@@ -29,7 +29,7 @@ export default function AdminDashboard() {
     const fetchStats = async () => {
       try {
         // 병렬로 모든 데이터 가져오기
-        const [galleries, allExhibitions] = await Promise.all([
+        const [galleries, initialExhibitions] = await Promise.all([
           fetchGalleries().catch((error) => {
             console.error("갤러리 조회 실패:", error);
             return [] as Gallery[];
@@ -39,6 +39,8 @@ export default function AdminDashboard() {
             return [] as Exhibition[];
           }),
         ]);
+        
+        let allExhibitions: Exhibition[] = [...initialExhibitions];
 
         console.log("갤러리 수:", galleries.length);
         console.log("전시 수:", allExhibitions.length);
@@ -77,15 +79,15 @@ export default function AdminDashboard() {
           console.log("추가로 조회한 전시 수:", missingExhibitions.length);
           
           // 기존 전시 목록과 병합 (중복 제거)
-          const allExhibitionsMap = new Map(allExhibitions.map(e => [e.id, e]));
+          const allExhibitionsMap = new Map<number, Exhibition>(allExhibitions.map(e => [e.id, e]));
           missingExhibitions.forEach(e => {
             if (!allExhibitionsMap.has(e.id)) {
-              allExhibitionsMap.set(e.id, e);
+              allExhibitionsMap.set(e.id, e as Exhibition);
             }
           });
           
-          allExhibitions.length = 0;
-          allExhibitions.push(...Array.from(allExhibitionsMap.values()));
+          // 새로운 배열로 교체
+          allExhibitions = Array.from(allExhibitionsMap.values());
           
           console.log("병합 후 전시 수:", allExhibitions.length);
         }
