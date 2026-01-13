@@ -23,6 +23,8 @@ export default function ExhibitionsPage() {
     useState<Exhibition | null>(null);
   const [posterFile, setPosterFile] = useState<File | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
+  const [filterIsNow, setFilterIsNow] = useState<boolean | null>(null);
+  const [filterShow, setFilterShow] = useState<boolean | null>(null);
   const [formData, setFormData] = useState({
     gallery_id: "",
     name: "",
@@ -75,23 +77,34 @@ export default function ExhibitionsPage() {
     }
   };
 
-  // 검색 필터링
+  // 검색 및 필터링
   useEffect(() => {
-    if (!searchQuery.trim()) {
-      setFilteredExhibitions(exhibitions);
-      return;
+    let filtered = [...exhibitions];
+
+    // 검색 필터링
+    if (searchQuery.trim()) {
+      const query = searchQuery.toLowerCase();
+      filtered = filtered.filter(
+        (exhibition) =>
+          exhibition.name.toLowerCase().includes(query) ||
+          (exhibition.description?.toLowerCase().includes(query) ?? false) ||
+          (exhibition.info?.toLowerCase().includes(query) ?? false) ||
+          (exhibition.location?.toLowerCase().includes(query) ?? false)
+      );
     }
 
-    const query = searchQuery.toLowerCase();
-    const filtered = exhibitions.filter(
-      (exhibition) =>
-        exhibition.name.toLowerCase().includes(query) ||
-        (exhibition.description?.toLowerCase().includes(query) ?? false) ||
-        (exhibition.info?.toLowerCase().includes(query) ?? false) ||
-        (exhibition.location?.toLowerCase().includes(query) ?? false)
-    );
+    // 진행 필터링 (is_now)
+    if (filterIsNow !== null) {
+      filtered = filtered.filter((exhibition) => exhibition.is_now === filterIsNow);
+    }
+
+    // 표시 필터링 (show)
+    if (filterShow !== null) {
+      filtered = filtered.filter((exhibition) => (exhibition.show ?? true) === filterShow);
+    }
+
     setFilteredExhibitions(filtered);
-  }, [exhibitions, searchQuery]);
+  }, [exhibitions, searchQuery, filterIsNow, filterShow]);
 
   /* ===================== Submit ===================== */
   const handleSubmit = async (e: React.FormEvent) => {
@@ -396,27 +409,69 @@ export default function ExhibitionsPage() {
           </div>
         )}
 
-        {/* 검색 */}
+        {/* 검색 및 필터 */}
         {exhibitions.length > 0 && (
           <div className="bg-white rounded-lg shadow p-4 mb-6 border border-gray-200">
-            <div className="flex gap-4 items-center flex-wrap">
-              <div className="flex-1 min-w-[300px]">
-                <input
-                  type="text"
-                  placeholder="제목, 설명, 위치로 검색..."
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className="w-full px-4 py-2 border rounded"
-                />
+            <div className="space-y-4">
+              {/* 검색 */}
+              <div className="flex gap-4 items-center flex-wrap">
+                <div className="flex-1 min-w-[300px]">
+                  <input
+                    type="text"
+                    placeholder="제목, 설명, 위치로 검색..."
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    className="w-full px-4 py-2 border rounded"
+                  />
+                </div>
+                {searchQuery && (
+                  <button
+                    onClick={() => setSearchQuery("")}
+                    className="px-3 py-2 text-sm text-gray-600 hover:text-gray-800 whitespace-nowrap flex-shrink-0"
+                  >
+                    검색 초기화
+                  </button>
+                )}
               </div>
-              {searchQuery && (
-                <button
-                  onClick={() => setSearchQuery("")}
-                  className="px-3 py-2 text-sm text-gray-600 hover:text-gray-800 whitespace-nowrap flex-shrink-0"
-                >
-                  검색 초기화
-                </button>
-              )}
+
+              {/* 필터 체크박스 */}
+              <div className="flex gap-6 items-center flex-wrap border-t pt-4">
+                <div className="flex items-center gap-2">
+                  <label className="text-sm font-medium">필터:</label>
+                </div>
+                
+                <div className="flex items-center gap-2">
+                  <input
+                    type="checkbox"
+                    checked={filterIsNow === true}
+                    onChange={(e) => setFilterIsNow(e.target.checked ? true : null)}
+                    className="cursor-pointer"
+                  />
+                  <label className="text-sm cursor-pointer">진행 중만</label>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <input
+                    type="checkbox"
+                    checked={filterShow === true}
+                    onChange={(e) => setFilterShow(e.target.checked ? true : null)}
+                    className="cursor-pointer"
+                  />
+                  <label className="text-sm cursor-pointer">표시만</label>
+                </div>
+
+                {(filterIsNow !== null || filterShow !== null) && (
+                  <button
+                    onClick={() => {
+                      setFilterIsNow(null);
+                      setFilterShow(null);
+                    }}
+                    className="px-3 py-1 text-sm text-gray-600 hover:text-gray-800 whitespace-nowrap"
+                  >
+                    필터 초기화
+                  </button>
+                )}
+              </div>
             </div>
           </div>
         )}

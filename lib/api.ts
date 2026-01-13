@@ -75,34 +75,9 @@ export async function fetchAllExhibitions(filters?: {
     query = query.or(`name.ilike.%${filters.search}%,description.ilike.%${filters.search}%`);
   }
 
-  // 모든 전시를 가져오기 위해 제한 없이 조회
-  const { data, error } = await query.limit(10000);
+  const { data, error } = await query;
   if (error) throw new Error(`전시 조회 실패: ${error.message}`);
   return data || [];
-}
-
-// 특정 ID 목록으로 전시 가져오기
-export async function fetchExhibitionsByIds(exhibitionIds: number[]) {
-  if (exhibitionIds.length === 0) return [];
-  
-  // Supabase의 in() 쿼리는 최대 1000개까지만 지원하므로, 1000개씩 나눠서 조회
-  const chunks: number[][] = [];
-  for (let i = 0; i < exhibitionIds.length; i += 1000) {
-    chunks.push(exhibitionIds.slice(i, i + 1000));
-  }
-  
-  const allExhibitions: any[] = [];
-  for (const chunk of chunks) {
-    const { data, error } = await supabase
-      .from("Exhibition")
-      .select("id, gallery_id, name, description, info, start_date, end_date, is_now, show, brochure, location, admission_fee, poster_url")
-      .in("id", chunk);
-    
-    if (error) throw new Error(`전시 조회 실패: ${error.message}`);
-    if (data) allExhibitions.push(...data);
-  }
-  
-  return allExhibitions;
 }
 
 export async function createExhibition(data: {
@@ -267,7 +242,8 @@ export async function fetchArtworkDetail(id: string) {
 }
 
 export async function createArtwork(data: {
-  exhibition_id: number; // 단일 전시 연결
+  exhibition_id?: number; // 단일 전시 연결 (하위 호환성)
+  exhibition_ids?: number[]; // 다중 전시 연결
   title: string;
   artist: string;
   description?: string;
@@ -278,25 +254,37 @@ export async function createArtwork(data: {
   management_number?: number;
   is_now?: boolean;
 }) {
-  if (!data.exhibition_id) {
-    throw new Error("전시를 선택해야 합니다.");
+  const { exhibition_id, exhibition_ids, ...artworkData } = data;
+  
+  // 여러 전시에 속하면 각 전시마다 레코드 생성
+  const finalExhibitionIds = exhibition_ids || (exhibition_id ? [exhibition_id] : []);
+  
+  if (finalExhibitionIds.length === 0) {
+    throw new Error("최소 하나의 전시를 선택해야 합니다.");
   }
 
-  const { data: result, error } = await supabase
+  // 각 전시마다 작품 레코드 생성
+  const insertDataArray = finalExhibitionIds.map((exId) => ({
+    ...artworkData,
+    exhibition_id: exId,
+  }));
+
+  const { data: results, error } = await supabase
     .from("Artworks")
-    .insert([data])
-    .select()
-    .single();
+    .insert(insertDataArray)
+    .select();
 
   if (error) throw new Error(`작품 생성 실패: ${error.message}`);
   
-  return result;
+  // 첫 번째 레코드를 반환 (하위 호환성)
+  return results?.[0] || null;
 }
 
 export async function updateArtwork(
   id: string,
   data: {
-    exhibition_id: number; // 단일 전시 연결
+    exhibition_id?: number; // 단일 전시 연결 (하위 호환성)
+    exhibition_ids?: number[]; // 다중 전시 연결
     title: string;
     artist: string;
     description?: string;
@@ -308,18 +296,120 @@ export async function updateArtwork(
     is_now?: boolean;
   }
 ) {
-  if (!data.exhibition_id) {
-    throw new Error("전시를 선택해야 합니다.");
-  }
-
-  const { data: updated, error } = await supabase
+  // 먼저 현재 작품 정보 가져오기
+  const { data: currentArtwork, error: fetchError } = await supabase
     .from("Artworks")
-    .update(data)
+    .select("*")
     .eq("id", id)
-    .select()
     .single();
 
-  if (error) throw new Error(`작품 수정 실패: ${error.message}`);
+  if (fetchError) throw new Error(`작품 조회 실패: ${fetchError.message}`);
+  if (!currentArtwork) throw new Error("작품을 찾을 수 없습니다.");
+
+  const { exhibition_id, exhibition_ids, ...artworkData } = data;
+  
+  // 같은 작품(제목+작가)의 모든 레코드 찾기
+  const { data: allArtworks, error: findError } = await supabase
+    .from("Artworks")
+    .select("id, exhibition_id")
+    .eq("title", currentArtwork.title)
+    .eq("artist", currentArtwork.artist);
+
+  if (findError) throw new Error(`작품 조회 실패: ${findError.message}`);
+
+  // 업데이트할 전시 목록 결정
+  const finalExhibitionIds = exhibition_ids || (exhibition_id ? [exhibition_id] : [currentArtwork.exhibition_id]);
+  
+  if (finalExhibitionIds.length === 0) {
+    throw new Error("최소 하나의 전시를 선택해야 합니다.");
+  }
+
+  // 기존 레코드의 전시 ID 목록
+  const existingExhibitionIds = allArtworks?.map((a) => a.exhibition_id) || [];
+  const existingIds = allArtworks?.map((a) => a.id) || [];
+
+  // 추가할 전시와 삭제할 전시 계산
+  const toAdd = finalExhibitionIds.filter((id) => !existingExhibitionIds.includes(id));
+  const toRemove = existingExhibitionIds.filter((id) => !finalExhibitionIds.includes(id));
+
+  // 삭제할 레코드 제거
+  if (toRemove.length > 0) {
+    const idsToDelete = allArtworks
+      ?.filter((a) => toRemove.includes(a.exhibition_id))
+      .map((a) => a.id) || [];
+
+    if (idsToDelete.length > 0) {
+      const { error: deleteError } = await supabase
+        .from("Artworks")
+        .delete()
+        .in("id", idsToDelete);
+
+      if (deleteError) throw new Error(`작품 삭제 실패: ${deleteError.message}`);
+    }
+  }
+
+  // 기존 레코드 업데이트 (작품 정보만)
+  const toUpdate = allArtworks?.filter((a) => finalExhibitionIds.includes(a.exhibition_id)) || [];
+  if (toUpdate.length > 0) {
+    const updateIds = toUpdate.map((a) => a.id);
+    const { error: updateError } = await supabase
+      .from("Artworks")
+      .update(artworkData)
+      .in("id", updateIds);
+
+    if (updateError) throw new Error(`작품 수정 실패: ${updateError.message}`);
+  }
+
+  // 새 전시에 대한 레코드 추가
+  if (toAdd.length > 0) {
+    const insertDataArray = toAdd.map((exId) => ({
+      ...artworkData,
+      exhibition_id: exId,
+    }));
+
+    const { error: insertError } = await supabase
+      .from("Artworks")
+      .insert(insertDataArray);
+
+    if (insertError) throw new Error(`작품 추가 실패: ${insertError.message}`);
+  }
+
+  // 업데이트된 첫 번째 레코드 반환
+  // 업데이트한 레코드가 있으면 그것을 반환, 없으면 새로 추가한 레코드 반환
+  let updated = null;
+  
+  if (toUpdate.length > 0) {
+    // 업데이트한 레코드 중 첫 번째 반환
+    const { data: updatedData, error: selectError } = await supabase
+      .from("Artworks")
+      .select("*")
+      .eq("id", toUpdate[0].id)
+      .single();
+
+    if (!selectError && updatedData) {
+      updated = updatedData;
+    }
+  }
+  
+  // 업데이트한 레코드가 없고 새로 추가한 레코드가 있으면 그것을 반환
+  if (!updated && toAdd.length > 0) {
+    const { data: insertedData, error: selectError } = await supabase
+      .from("Artworks")
+      .select("*")
+      .eq("title", data.title)
+      .eq("artist", data.artist)
+      .eq("exhibition_id", finalExhibitionIds[0])
+      .single();
+
+    if (!selectError && insertedData) {
+      updated = insertedData;
+    }
+  }
+  
+  // 여전히 찾지 못하면 기존 레코드 반환
+  if (!updated) {
+    updated = currentArtwork;
+  }
   
   return updated;
 }
