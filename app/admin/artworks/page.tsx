@@ -62,6 +62,11 @@ export default function ArtworksPage() {
     is_now: false,
   });
   const [uploading, setUploading] = useState(false);
+  
+  // 작품 추가 폼용 작가 검색 상태
+  const [formArtistSearch, setFormArtistSearch] = useState("");
+  const [formArtists, setFormArtists] = useState<string[]>([]);
+  const [showArtistSuggestions, setShowArtistSuggestions] = useState(false);
 
   useEffect(() => {
     if (viewMode === "exhibition") {
@@ -70,6 +75,21 @@ export default function ArtworksPage() {
       loadAllArtists();
     }
   }, [viewMode]);
+  
+  // 작품 추가 폼이 열릴 때 작가 목록 로드
+  useEffect(() => {
+    if (showForm) {
+      const loadFormArtists = async () => {
+        try {
+          const data = await fetchAllArtists();
+          setFormArtists(data);
+        } catch (error) {
+          console.error("작가 로딩 실패:", error);
+        }
+      };
+      loadFormArtists();
+    }
+  }, [showForm]);
 
   useEffect(() => {
     if (viewMode === "exhibition") {
@@ -785,15 +805,66 @@ export default function ArtworksPage() {
               </div>
               <div>
                 <label className="block text-sm font-medium mb-1">작가</label>
-                <input
-                  type="text"
-                  value={formData.artist}
-                  onChange={(e) =>
-                    setFormData({ ...formData, artist: e.target.value })
-                  }
-                  className="w-full px-3 py-2 border rounded"
-                  required
-                />
+                <div className="relative">
+                  <input
+                    type="text"
+                    value={formData.artist}
+                    onChange={(e) => {
+                      setFormData({ ...formData, artist: e.target.value });
+                      setFormArtistSearch(e.target.value);
+                      setShowArtistSuggestions(true);
+                    }}
+                    onFocus={() => setShowArtistSuggestions(true)}
+                    onBlur={() => {
+                      // 약간의 지연을 두어 클릭 이벤트가 먼저 처리되도록
+                      setTimeout(() => setShowArtistSuggestions(false), 200);
+                    }}
+                    placeholder="작가명을 입력하거나 검색하세요..."
+                    className="w-full px-3 py-2 border rounded"
+                    required
+                  />
+                  {formArtistSearch && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setFormArtistSearch("");
+                        setFormData({ ...formData, artist: "" });
+                      }}
+                      className="absolute right-2 top-2 text-gray-400 hover:text-gray-600"
+                    >
+                      ✕
+                    </button>
+                  )}
+                  {showArtistSuggestions && formArtistSearch && (
+                    <div className="absolute z-10 w-full mt-1 bg-white border rounded shadow-lg max-h-60 overflow-y-auto">
+                      {formArtists
+                        .filter((artist) =>
+                          artist.toLowerCase().includes(formArtistSearch.toLowerCase())
+                        )
+                        .slice(0, 10)
+                        .map((artist) => (
+                          <div
+                            key={artist}
+                            onClick={() => {
+                              setFormData({ ...formData, artist });
+                              setFormArtistSearch(artist);
+                              setShowArtistSuggestions(false);
+                            }}
+                            className="px-3 py-2 hover:bg-gray-100 cursor-pointer text-sm"
+                          >
+                            {artist}
+                          </div>
+                        ))}
+                      {formArtists.filter((artist) =>
+                        artist.toLowerCase().includes(formArtistSearch.toLowerCase())
+                      ).length === 0 && (
+                        <div className="px-3 py-2 text-sm text-gray-500">
+                          검색 결과가 없습니다.
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
               </div>
               <div>
                 <label className="block text-sm font-medium mb-1">설명</label>
