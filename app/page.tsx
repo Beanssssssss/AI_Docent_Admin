@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { fetchGalleries, fetchAllExhibitions, fetchAllArtworks } from "@/lib/api";
+import { fetchGalleries, fetchAllExhibitions, fetchAllArtworks, fetchExhibitionsByIds } from "@/lib/api";
 import type { Gallery, Exhibition, Artwork } from "@/lib/types";
 import AdminSidebar from "@/components/AdminSidebar";
 
@@ -21,7 +21,9 @@ type GalleryStats = {
 export default function AdminDashboard() {
   const [stats, setStats] = useState<TableStats[]>([]);
   const [galleryStats, setGalleryStats] = useState<GalleryStats[]>([]);
+  const [filteredGalleryStats, setFilteredGalleryStats] = useState<GalleryStats[]>([]);
   const [loading, setLoading] = useState(true);
+  const [searchQuery, setSearchQuery] = useState("");
 
   useEffect(() => {
     const fetchStats = async () => {
@@ -48,6 +50,45 @@ export default function AdminDashboard() {
         });
         
         console.log("작품 수:", allArtworks.length);
+        
+        // 작품의 exhibition_id 수집
+        const artworkExhibitionIds = allArtworks
+          .filter(a => a.exhibition_id !== null && a.exhibition_id !== undefined)
+          .map(a => typeof a.exhibition_id === 'number' ? a.exhibition_id : Number(a.exhibition_id))
+          .filter(id => !isNaN(id));
+        
+        const uniqueArtworkExhibitionIds = [...new Set(artworkExhibitionIds)];
+        console.log("작품이 참조하는 전시 ID 개수:", uniqueArtworkExhibitionIds.length);
+        
+        // 기존 전시 목록에 없는 전시 ID 찾기
+        const existingExhibitionIds = new Set(allExhibitions.map(e => e.id));
+        const missingExhibitionIds = uniqueArtworkExhibitionIds.filter(id => !existingExhibitionIds.has(id));
+        
+        console.log("기존 전시 목록에 없는 전시 ID 개수:", missingExhibitionIds.length);
+        if (missingExhibitionIds.length > 0) {
+          console.log("누락된 전시 ID 샘플:", missingExhibitionIds.slice(0, 20).sort((a, b) => a - b));
+          
+          // 누락된 전시 ID로 전시 추가 조회
+          const missingExhibitions = await fetchExhibitionsByIds(missingExhibitionIds).catch((error) => {
+            console.error("누락된 전시 조회 실패:", error);
+            return [];
+          });
+          
+          console.log("추가로 조회한 전시 수:", missingExhibitions.length);
+          
+          // 기존 전시 목록과 병합 (중복 제거)
+          const allExhibitionsMap = new Map(allExhibitions.map(e => [e.id, e]));
+          missingExhibitions.forEach(e => {
+            if (!allExhibitionsMap.has(e.id)) {
+              allExhibitionsMap.set(e.id, e);
+            }
+          });
+          
+          allExhibitions.length = 0;
+          allExhibitions.push(...Array.from(allExhibitionsMap.values()));
+          
+          console.log("병합 후 전시 수:", allExhibitions.length);
+        }
 
         // 전체 통계
         setStats([
@@ -192,6 +233,7 @@ export default function AdminDashboard() {
         
         console.log("=== 갤러리별 작품 카운트 완료 ===");
         setGalleryStats(galleryStatsData);
+        setFilteredGalleryStats(galleryStatsData);
       } catch (error) {
         console.error("통계 로딩 실패:", error);
       } finally {
@@ -201,6 +243,22 @@ export default function AdminDashboard() {
 
     fetchStats();
   }, []);
+
+  // 검색 필터링
+  useEffect(() => {
+    if (!searchQuery.trim()) {
+      setFilteredGalleryStats(galleryStats);
+      return;
+    }
+
+    const query = searchQuery.toLowerCase();
+    const filtered = galleryStats.filter((item) =>
+      item.gallery.name.toLowerCase().includes(query) ||
+      item.gallery.location?.toLowerCase().includes(query) ||
+      item.gallery.description?.toLowerCase().includes(query)
+    );
+    setFilteredGalleryStats(filtered);
+  }, [searchQuery, galleryStats]);
 
   return (
     <div className="flex h-screen">
@@ -235,7 +293,16 @@ export default function AdminDashboard() {
         {/* 갤러리별 상세 통계 */}
         {galleryStats.length > 0 && (
           <div className="bg-white rounded-lg shadow p-6 border border-gray-200 mb-6">
-            <h3 className="text-xl font-semibold mb-4">갤러리별 상세 통계</h3>
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="text-xl font-semibold">갤러리별 상세 통계</h3>
+              <input
+                type="text"
+                placeholder="갤러리명, 위치, 설명으로 검색..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+            </div>
             <div className="overflow-x-auto">
               <table className="min-w-full divide-y divide-gray-200">
                 <thead className="bg-gray-50">
@@ -252,7 +319,14 @@ export default function AdminDashboard() {
                   </tr>
                 </thead>
                 <tbody className="bg-white divide-y divide-gray-200">
-                  {galleryStats.map((item) => (
+                  {filteredGalleryStats.length === 0 ? (
+                    <tr>
+                      <td colSpan={3} className="px-6 py-8 text-center text-gray-500">
+                        검색 결과가 없습니다.
+                      </td>
+                    </tr>
+                  ) : (
+                    filteredGalleryStats.map((item) => (
                     <tr key={item.gallery.id}>
                       <td className="px-6 py-4 whitespace-nowrap">
                         <div className="text-sm font-medium text-gray-900">
@@ -269,7 +343,8 @@ export default function AdminDashboard() {
                         {item.artworkCount}
                       </td>
                     </tr>
-                  ))}
+                    ))
+                  )}
                 </tbody>
               </table>
             </div>
