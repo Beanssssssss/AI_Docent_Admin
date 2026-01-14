@@ -42,16 +42,19 @@ export default function AdminDashboard() {
         
         let allExhibitions: Exhibition[] = [...initialExhibitions];
 
-        console.log("갤러리 수:", galleries.length);
-        console.log("전시 수:", allExhibitions.length);
-
         // Artwork 테이블에서 모든 작품 직접 가져오기
         const allArtworks = await fetchAllArtworks().catch((error) => {
           console.error("작품 조회 실패:", error);
           return [] as Artwork[];
         });
         
-        console.log("작품 수:", allArtworks.length);
+        // 고유 작품 수 계산 (제목+작가 기준)
+        const uniqueArtworksSet = new Set<string>();
+        allArtworks.forEach((artwork) => {
+          const uniqueKey = `${artwork.title}|${artwork.artist}`;
+          uniqueArtworksSet.add(uniqueKey);
+        });
+        const uniqueArtworksCount = uniqueArtworksSet.size;
         
         // 작품의 exhibition_id 수집
         const artworkExhibitionIds = allArtworks
@@ -60,23 +63,17 @@ export default function AdminDashboard() {
           .filter(id => !isNaN(id));
         
         const uniqueArtworkExhibitionIds = [...new Set(artworkExhibitionIds)];
-        console.log("작품이 참조하는 전시 ID 개수:", uniqueArtworkExhibitionIds.length);
         
         // 기존 전시 목록에 없는 전시 ID 찾기
         const existingExhibitionIds = new Set(allExhibitions.map(e => e.id));
         const missingExhibitionIds = uniqueArtworkExhibitionIds.filter(id => !existingExhibitionIds.has(id));
         
-        console.log("기존 전시 목록에 없는 전시 ID 개수:", missingExhibitionIds.length);
         if (missingExhibitionIds.length > 0) {
-          console.log("누락된 전시 ID 샘플:", missingExhibitionIds.slice(0, 20).sort((a, b) => a - b));
-          
           // 누락된 전시 ID로 전시 추가 조회
           const missingExhibitions = await fetchExhibitionsByIds(missingExhibitionIds).catch((error) => {
             console.error("누락된 전시 조회 실패:", error);
             return [];
           });
-          
-          console.log("추가로 조회한 전시 수:", missingExhibitions.length);
           
           // 기존 전시 목록과 병합 (중복 제거)
           const allExhibitionsMap = new Map<number, Exhibition>(allExhibitions.map(e => [e.id, e]));
@@ -88,8 +85,6 @@ export default function AdminDashboard() {
           
           // 새로운 배열로 교체
           allExhibitions = Array.from(allExhibitionsMap.values());
-          
-          console.log("병합 후 전시 수:", allExhibitions.length);
         }
 
         // 전체 통계
@@ -120,8 +115,8 @@ export default function AdminDashboard() {
           },
           {
             name: "Artwork",
-            count: allArtworks.length || 0,
-            description: "작품 정보를 관리합니다",
+            count: uniqueArtworksCount || 0,
+            description: "작품 정보를 관리합니다 (고유 작품 수: 제목+작가 기준)",
             fields: [
               "id",
               "exhibition_id",
@@ -141,7 +136,6 @@ export default function AdminDashboard() {
 
         // 갤러리별 상세 통계
         // 갤러리 ID -> 전시 ID Set 매핑
-        console.log("=== 갤러리-전시 매핑 시작 ===");
         const galleryExhibitionMap = new Map<number, Set<number>>();
         
         allExhibitions.forEach((exhibition) => {
@@ -151,80 +145,32 @@ export default function AdminDashboard() {
           galleryExhibitionMap.get(exhibition.gallery_id)!.add(exhibition.id);
         });
 
-        // 갤러리-전시 매핑 결과 출력
-        console.log("갤러리-전시 매핑 결과:");
-        galleryExhibitionMap.forEach((exhibitionIds, galleryId) => {
-          const gallery = galleries.find(g => g.id === galleryId);
-          console.log(`  갤러리 ${galleryId} (${gallery?.name || '알 수 없음'}): 전시 ${exhibitionIds.size}개`, Array.from(exhibitionIds).slice(0, 10));
-        });
-
-        // 작품의 exhibition_id 샘플 출력
-        console.log("작품의 exhibition_id 샘플 (처음 20개):");
-        allArtworks.slice(0, 20).forEach((artwork, index) => {
-          console.log(`  작품 ${index + 1}: id=${artwork.id}, exhibition_id=${artwork.exhibition_id}, type=${typeof artwork.exhibition_id}`);
-        });
-
-        // 갤러리별 작품 수 카운트
-        // 각 갤러리의 전시 ID Set에 작품의 exhibition_id가 포함되는지 확인
-        console.log("=== 갤러리별 작품 카운트 시작 ===");
+        // 갤러리별 작품 수 카운트 (고유 작품 기준: 제목+작가)
         const galleryStatsData: GalleryStats[] = galleries.map((gallery) => {
           const galleryExhibitionIds = galleryExhibitionMap.get(gallery.id) || new Set<number>();
           const exhibitionCount = galleryExhibitionIds.size;
           
-          console.log(`\n갤러리 ${gallery.id} (${gallery.name}) 처리 중...`);
-          console.log(`  전시 ID Set:`, Array.from(galleryExhibitionIds).slice(0, 10), `(총 ${galleryExhibitionIds.size}개)`);
-          
-          // 작품의 exhibition_id가 이 갤러리의 전시 ID Set에 포함되는지 확인
-          const matchedArtworks: any[] = [];
-          const unmatchedArtworks: any[] = [];
-          let logCount = 0;
-          const maxLogCount = 10; // 처음 10개만 상세 로그
+          // 이 갤러리의 전시에 속한 작품들을 고유 작품(제목+작가) 기준으로 카운트
+          const uniqueArtworks = new Set<string>();
           
           allArtworks.forEach((artwork) => {
-            // 작품의 exhibition_id 확인
             const rawExhibitionId = artwork.exhibition_id;
-            const shouldLog = logCount < maxLogCount;
-            
-            if (shouldLog) {
-              console.log(`    작품 ${artwork.id}: exhibition_id=${rawExhibitionId}, type=${typeof rawExhibitionId}`);
-            }
             
             if (!rawExhibitionId) {
-              unmatchedArtworks.push({ artworkId: artwork.id, reason: 'exhibition_id가 null/undefined' });
-              if (shouldLog) console.log(`      -> exhibition_id가 없음`);
-              logCount++;
               return;
             }
             
             const artworkExhibitionId = Number(rawExhibitionId);
             
-            if (shouldLog) {
-              console.log(`      -> 변환된 값: ${artworkExhibitionId}, isNaN: ${isNaN(artworkExhibitionId)}`);
-              console.log(`      -> 전시 ID Set에 포함?: ${galleryExhibitionIds.has(artworkExhibitionId)}`);
-            }
-            
+            // 이 갤러리의 전시에 속한 작품인지 확인
             if (galleryExhibitionIds.has(artworkExhibitionId)) {
-              matchedArtworks.push({ artworkId: artwork.id, exhibitionId: artworkExhibitionId });
-              if (shouldLog) console.log(`      -> 매칭됨!`);
-            } else {
-              unmatchedArtworks.push({ artworkId: artwork.id, exhibitionId: artworkExhibitionId });
-              if (shouldLog) console.log(`      -> 매칭 안됨 (전시 ID ${artworkExhibitionId}가 이 갤러리의 전시 목록에 없음)`);
+              // 고유 작품 키: 제목 + 작가
+              const uniqueKey = `${artwork.title}|${artwork.artist}`;
+              uniqueArtworks.add(uniqueKey);
             }
-            
-            logCount++;
           });
 
-          const artworkCount = matchedArtworks.length;
-          
-          console.log(`  매칭된 작품: ${artworkCount}개`);
-          if (matchedArtworks.length > 0) {
-            console.log(`  매칭된 작품 샘플:`, matchedArtworks.slice(0, 5));
-          }
-          if (unmatchedArtworks.length > 0 && unmatchedArtworks.length <= 10) {
-            console.log(`  매칭 안된 작품 샘플:`, unmatchedArtworks.slice(0, 5));
-          }
-
-          console.log(`갤러리 ${gallery.id} (${gallery.name}): 전시 ${exhibitionCount}개, 작품 ${artworkCount}개`);
+          const artworkCount = uniqueArtworks.size;
 
           return {
             gallery,
@@ -232,8 +178,6 @@ export default function AdminDashboard() {
             artworkCount,
           };
         });
-        
-        console.log("=== 갤러리별 작품 카운트 완료 ===");
         setGalleryStats(galleryStatsData);
         setFilteredGalleryStats(galleryStatsData);
       } catch (error) {
