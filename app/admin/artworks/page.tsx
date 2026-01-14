@@ -574,10 +574,10 @@ export default function ArtworksPage() {
                 </div>
               </div>
 
-              {/* 전시 선택 (다중 선택) */}
+              {/* 전시 선택 (단일 선택) */}
               <div>
                 <label className="block text-sm font-medium mb-2">
-                  전시 선택 (다중 선택 가능)
+                  전시 선택
                 </label>
                 <div className="max-h-40 overflow-y-auto border rounded p-2 space-y-2">
                   {filteredExhibitions.length === 0 ? (
@@ -589,19 +589,11 @@ export default function ArtworksPage() {
                         className="flex items-center space-x-2 cursor-pointer hover:bg-gray-50 p-2 rounded"
                       >
                         <input
-                          type="checkbox"
-                          checked={selectedExhibitionIds.includes(exhibition.id)}
-                          onChange={(e) => {
-                            if (e.target.checked) {
-                              setSelectedExhibitionIds([
-                                ...selectedExhibitionIds,
-                                exhibition.id,
-                              ]);
-                            } else {
-                              setSelectedExhibitionIds(
-                                selectedExhibitionIds.filter((id) => id !== exhibition.id)
-                              );
-                            }
+                          type="radio"
+                          name="exhibition-select"
+                          checked={selectedExhibitionIds.length === 1 && selectedExhibitionIds[0] === exhibition.id}
+                          onChange={() => {
+                            setSelectedExhibitionIds([exhibition.id]);
                           }}
                           className="mr-2"
                         />
@@ -620,7 +612,7 @@ export default function ArtworksPage() {
                 </div>
                 {selectedExhibitionIds.length > 0 && (
                   <div className="mt-2 text-sm text-gray-600">
-                    선택된 전시: {selectedExhibitionIds.length}개
+                    선택된 전시: {exhibitions.find(ex => ex.id === selectedExhibitionIds[0])?.name || selectedExhibitionIds[0]}
                   </div>
                 )}
               </div>
