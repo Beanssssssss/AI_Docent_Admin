@@ -327,12 +327,53 @@ export async function deleteArtwork(id: string) {
   // 먼저 현재 작품 정보 가져오기
   const { data: currentArtwork, error: fetchError } = await supabase
     .from("Artworks")
-    .select("title, artist")
+    .select("title, artist, image_url")
     .eq("id", id)
     .single();
 
   if (fetchError) throw new Error(`작품 조회 실패: ${fetchError.message}`);
   if (!currentArtwork) throw new Error("작품을 찾을 수 없습니다.");
+
+  // 같은 작품(제목+작가)의 모든 레코드 가져오기 (이미지 URL 수집용)
+  const { data: allArtworks, error: findError } = await supabase
+    .from("Artworks")
+    .select("image_url")
+    .eq("title", currentArtwork.title)
+    .eq("artist", currentArtwork.artist);
+
+  if (findError) throw new Error(`작품 조회 실패: ${findError.message}`);
+
+  // 스토리지에서 이미지 파일 삭제
+  if (allArtworks && allArtworks.length > 0) {
+    const imageUrls = allArtworks
+      .map((a) => a.image_url)
+      .filter((url): url is string => !!url);
+
+    // 각 이미지 URL에서 파일 경로 추출 및 삭제
+    for (const imageUrl of imageUrls) {
+      try {
+        // Supabase Storage Public URL에서 파일 경로 추출
+        // URL 형식: https://{project}.supabase.co/storage/v1/object/public/AI_Docent/{path}
+        const urlMatch = imageUrl.match(/\/storage\/v1\/object\/public\/AI_Docent\/(.+)$/);
+        if (urlMatch && urlMatch[1]) {
+          const filePath = urlMatch[1];
+          
+          // 스토리지에서 파일 삭제
+          const { error: deleteError } = await supabase.storage
+            .from("AI_Docent")
+            .remove([filePath]);
+
+          if (deleteError) {
+            console.warn(`이미지 삭제 실패 (${filePath}):`, deleteError.message);
+            // 이미지 삭제 실패해도 데이터베이스 삭제는 계속 진행
+          }
+        }
+      } catch (error) {
+        console.warn("이미지 삭제 중 오류:", error);
+        // 이미지 삭제 실패해도 데이터베이스 삭제는 계속 진행
+      }
+    }
+  }
 
   // 같은 작품(제목+작가)의 모든 레코드 삭제
   const { error } = await supabase
