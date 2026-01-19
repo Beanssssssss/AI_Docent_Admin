@@ -217,7 +217,7 @@ export async function uploadArtworkImage(
 export async function fetchAllArtworks() {
   const { data, error } = await supabase
     .from("Artworks")
-    .select("*");
+    .select("*, embedding");
   if (error) throw new Error(`작품 조회 실패: ${error.message}`);
   return data || [];
 }
@@ -225,7 +225,7 @@ export async function fetchAllArtworks() {
 export async function fetchArtworks(exhibitionId: number) {
   const { data, error } = await supabase
     .from("Artworks")
-    .select("*")
+    .select("*, embedding")
     .eq("exhibition_id", exhibitionId);
   if (error) throw new Error(`작품 조회 실패: ${error.message}`);
   return data || [];
@@ -234,7 +234,7 @@ export async function fetchArtworks(exhibitionId: number) {
 export async function fetchArtworkDetail(id: string) {
   const { data, error } = await supabase
     .from("Artworks")
-    .select("*")
+    .select("*, embedding")
     .eq("id", id)
     .single();
   if (error) throw new Error(`작품 상세 조회 실패: ${error.message}`);
@@ -253,6 +253,7 @@ export async function createArtwork(data: {
   size?: string;
   management_number?: number;
   is_now?: boolean;
+  embedding?: number[];
 }) {
   const { exhibition_id, exhibition_ids, ...artworkData } = data;
   
@@ -272,7 +273,7 @@ export async function createArtwork(data: {
   const { data: results, error } = await supabase
     .from("Artworks")
     .insert(insertDataArray)
-    .select();
+    .select("*, embedding");
 
   if (error) throw new Error(`작품 생성 실패: ${error.message}`);
   
@@ -294,12 +295,13 @@ export async function updateArtwork(
     size?: string;
     management_number?: number;
     is_now?: boolean;
+    embedding?: number[];
   }
 ) {
   // 먼저 현재 작품 정보 가져오기
   const { data: currentArtwork, error: fetchError } = await supabase
     .from("Artworks")
-    .select("*")
+    .select("*, embedding")
     .eq("id", id)
     .single();
 
@@ -382,7 +384,7 @@ export async function updateArtwork(
     // 업데이트한 레코드 중 첫 번째 반환
     const { data: updatedData, error: selectError } = await supabase
       .from("Artworks")
-      .select("*")
+      .select("*, embedding")
       .eq("id", toUpdate[0].id)
       .single();
 
@@ -395,7 +397,7 @@ export async function updateArtwork(
   if (!updated && toAdd.length > 0) {
     const { data: insertedData, error: selectError } = await supabase
       .from("Artworks")
-      .select("*")
+      .select("*, embedding")
       .eq("title", data.title)
       .eq("artist", data.artist)
       .eq("exhibition_id", finalExhibitionIds[0])
@@ -466,7 +468,7 @@ export async function fetchArtworksByExhibitions(exhibitionIds: number[]) {
 
   const { data, error } = await supabase
     .from("Artworks")
-    .select("*")
+    .select("*, embedding")
     .in("exhibition_id", exhibitionIds);
 
   if (error) throw new Error(`작품 조회 실패: ${error.message}`);
@@ -493,7 +495,7 @@ export async function fetchArtworksByArtists(artistNames: string[]) {
 
   const { data, error } = await supabase
     .from("Artworks")
-    .select("*")
+    .select("*, embedding")
     .in("artist", artistNames)
     .order("title", { ascending: true });
 

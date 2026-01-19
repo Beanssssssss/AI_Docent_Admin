@@ -60,6 +60,7 @@ export default function ArtworksPage() {
     size: "",
     management_number: "",
     is_now: false,
+    embedding: "",
   });
   const [uploading, setUploading] = useState(false);
 
@@ -254,6 +255,25 @@ export default function ArtworksPage() {
         return;
       }
 
+      // embedding 파싱 (쉼표로 구분된 숫자 문자열을 배열로 변환)
+      let embeddingArray: number[] | undefined = undefined;
+      if (formData.embedding.trim()) {
+        try {
+          embeddingArray = formData.embedding
+            .split(",")
+            .map((val) => parseFloat(val.trim()))
+            .filter((val) => !isNaN(val));
+          if (embeddingArray.length === 0) {
+            embeddingArray = undefined;
+          }
+        } catch (error) {
+          console.error("Embedding 파싱 실패:", error);
+          alert("Embedding 형식이 올바르지 않습니다. 쉼표로 구분된 숫자를 입력해주세요.");
+          setUploading(false);
+          return;
+        }
+      }
+
       const submitData = {
         exhibition_ids: formData.exhibition_ids,
         title: formData.title,
@@ -267,6 +287,7 @@ export default function ArtworksPage() {
           ? Number(formData.management_number)
           : undefined,
         is_now: formData.is_now, // boolean 값은 명시적으로 전달 (false도 유지)
+        embedding: embeddingArray,
       };
 
       if (editingArtwork) {
@@ -290,6 +311,7 @@ export default function ArtworksPage() {
         size: "",
         management_number: "",
         is_now: false,
+        embedding: "",
       });
       if (viewMode === "exhibition" && selectedExhibitionIds.length > 0) {
         loadArtworksByExhibitions(selectedExhibitionIds);
@@ -319,6 +341,27 @@ export default function ArtworksPage() {
       }
     }
 
+    // embedding 처리: Supabase vector 타입은 배열로 반환됨
+    let embeddingText = "";
+    if (artwork.embedding) {
+      if (Array.isArray(artwork.embedding)) {
+        embeddingText = artwork.embedding.join(", ");
+      } else if (typeof artwork.embedding === "string") {
+        // 이미 문자열 형태인 경우
+        embeddingText = artwork.embedding;
+      } else {
+        // 다른 형태인 경우 JSON으로 변환 시도
+        try {
+          const parsed = JSON.parse(String(artwork.embedding));
+          if (Array.isArray(parsed)) {
+            embeddingText = parsed.join(", ");
+          }
+        } catch {
+          console.warn("Embedding 파싱 실패:", artwork.embedding);
+        }
+      }
+    }
+
     setFormData({
       exhibition_ids: exhibitionIds,
       title: artwork.title,
@@ -331,6 +374,7 @@ export default function ArtworksPage() {
       size: artwork.size || "",
       management_number: String(artwork.management_number || ""),
       is_now: Boolean(artwork.is_now), // boolean으로 명시적 변환
+      embedding: embeddingText,
     });
     setShowForm(true);
   };
@@ -376,6 +420,7 @@ export default function ArtworksPage() {
                   size: "",
                   management_number: "",
                   is_now: false,
+                  embedding: "",
                 });
               }}
               className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
@@ -823,6 +868,23 @@ export default function ArtworksPage() {
                   />
                   현재 전시 중인 작품
                 </label>
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-1">
+                  Embedding (쉼표로 구분된 숫자, 예: 0.1, 0.2, 0.3)
+                </label>
+                <textarea
+                  value={formData.embedding}
+                  onChange={(e) =>
+                    setFormData({ ...formData, embedding: e.target.value })
+                  }
+                  className="w-full px-3 py-2 border rounded"
+                  rows={3}
+                  placeholder="예: 0.123, -0.456, 0.789, ..."
+                />
+                <div className="text-xs text-gray-500 mt-1">
+                  Embedding 벡터를 쉼표로 구분하여 입력하세요. 빈 값이면 저장되지 않습니다.
+                </div>
               </div>
               <div className="flex gap-2">
                 <button

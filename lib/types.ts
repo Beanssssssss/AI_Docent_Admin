@@ -34,6 +34,7 @@ export type Artwork = {
   size?: string;
   management_number?: number;
   is_now?: boolean;
+  embedding?: number[];
 };
 
 export type ImageSearchResult = {
