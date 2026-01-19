@@ -63,6 +63,8 @@ export default function ArtworksPage() {
     embedding: "",
   });
   const [uploading, setUploading] = useState(false);
+  const [showArtistSuggestions, setShowArtistSuggestions] = useState(false);
+  const [artistSuggestions, setArtistSuggestions] = useState<string[]>([]);
 
   useEffect(() => {
     if (viewMode === "exhibition") {
@@ -71,6 +73,26 @@ export default function ArtworksPage() {
       loadAllArtists();
     }
   }, [viewMode]);
+
+  // 작품 추가/수정 폼을 위한 작가 목록 로드 (한 번만)
+  useEffect(() => {
+    loadAllArtists();
+  }, []);
+
+  // 작가 입력 시 자동완성 필터링
+  useEffect(() => {
+    if (formData.artist.trim()) {
+      const query = formData.artist.toLowerCase();
+      const filtered = artists.filter((artist) =>
+        artist.toLowerCase().includes(query) && artist !== formData.artist
+      );
+      setArtistSuggestions(filtered.slice(0, 5)); // 최대 5개만 표시
+      setShowArtistSuggestions(filtered.length > 0);
+    } else {
+      setArtistSuggestions([]);
+      setShowArtistSuggestions(false);
+    }
+  }, [formData.artist, artists]);
 
   useEffect(() => {
     if (viewMode === "exhibition") {
@@ -644,7 +666,7 @@ export default function ArtworksPage() {
         </div>
 
         {/* 검색 및 정렬 */}
-        {artworks.length > 0 && (
+        {(artworks.length > 0 || searchQuery) && (
           <div className="bg-white rounded-lg shadow p-4 mb-6 border border-gray-200">
             <div className="flex gap-4 items-center flex-wrap">
               <div className="flex-1 min-w-[300px]">
@@ -758,17 +780,43 @@ export default function ArtworksPage() {
                   required
                 />
               </div>
-              <div>
+              <div className="relative">
                 <label className="block text-sm font-medium mb-1">작가</label>
                 <input
                   type="text"
                   value={formData.artist}
-                  onChange={(e) =>
-                    setFormData({ ...formData, artist: e.target.value })
-                  }
+                  onChange={(e) => {
+                    setFormData({ ...formData, artist: e.target.value });
+                    setShowArtistSuggestions(true);
+                  }}
+                  onFocus={() => {
+                    if (formData.artist.trim() && artistSuggestions.length > 0) {
+                      setShowArtistSuggestions(true);
+                    }
+                  }}
+                  onBlur={() => {
+                    // 약간의 지연을 두어 클릭 이벤트가 먼저 발생하도록
+                    setTimeout(() => setShowArtistSuggestions(false), 200);
+                  }}
                   className="w-full px-3 py-2 border rounded"
                   required
                 />
+                {showArtistSuggestions && artistSuggestions.length > 0 && (
+                  <div className="absolute z-10 w-full mt-1 bg-white border border-gray-300 rounded-md shadow-lg max-h-40 overflow-y-auto">
+                    {artistSuggestions.map((artist) => (
+                      <div
+                        key={artist}
+                        onClick={() => {
+                          setFormData({ ...formData, artist });
+                          setShowArtistSuggestions(false);
+                        }}
+                        className="px-3 py-2 hover:bg-gray-100 cursor-pointer text-sm"
+                      >
+                        {artist}
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
               <div>
                 <label className="block text-sm font-medium mb-1">설명</label>
