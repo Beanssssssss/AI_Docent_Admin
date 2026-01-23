@@ -146,7 +146,8 @@ export default function AdminDashboard() {
         const exhibitionArtworkCountMap = new Map<number, number>();
         
         // 갤러리별 작품 수 카운트를 위한 매핑 (작품 -> exhibition_id -> Exhibition -> gallery_id -> Gallery)
-        const galleryArtworkCountMap = new Map<number, Set<string>>(); // gallery_id -> 고유 작품 Set (제목+작가)
+        // 중복 카운트 허용: 같은 작품이 여러 전시에 속하면 각각 카운트
+        const galleryArtworkCountMap = new Map<number, number>(); // gallery_id -> 작품 수 (중복 허용)
         
         // 작품별로 전부 확인: 작품 -> exhibition_id -> Exhibition -> gallery_id -> Gallery
         console.log("=== 작품별 갤러리 매핑 시작 ===");
@@ -179,8 +180,8 @@ export default function AdminDashboard() {
           }
           
           // 전시별 작품 수 카운트
-          const currentCount = exhibitionArtworkCountMap.get(exhibitionId) || 0;
-          exhibitionArtworkCountMap.set(exhibitionId, currentCount + 1);
+          const exhibitionCount = exhibitionArtworkCountMap.get(exhibitionId) || 0;
+          exhibitionArtworkCountMap.set(exhibitionId, exhibitionCount + 1);
           
           // 갤러리별 작품 수 카운트를 위한 매핑
           // 작품의 exhibition_id로 Exhibition을 찾고, 그 Exhibition의 gallery_id로 갤러리 매핑
@@ -201,13 +202,10 @@ export default function AdminDashboard() {
             return;
           }
           
+          // 중복 카운트 허용: 같은 작품이 여러 전시에 속하면 각각 카운트
           const galleryId = exhibition.gallery_id;
-          if (!galleryArtworkCountMap.has(galleryId)) {
-            galleryArtworkCountMap.set(galleryId, new Set());
-          }
-          // 고유 작품 식별 (제목+작가)
-          const artworkKey = `${artwork.title}|||${artwork.artist}`;
-          galleryArtworkCountMap.get(galleryId)!.add(artworkKey);
+          const galleryCount = galleryArtworkCountMap.get(galleryId) || 0;
+          galleryArtworkCountMap.set(galleryId, galleryCount + 1);
           artworkMappingCount++;
         });
         
@@ -225,15 +223,16 @@ export default function AdminDashboard() {
           console.log(`  전시 ${exhibitionId} (${exhibition?.name || '알 수 없음'}) [갤러리: ${gallery?.name || '알 수 없음'}]: 작품 ${count}개`);
         });
         
-        console.log("갤러리별 작품 수 매핑 결과:");
-        galleryArtworkCountMap.forEach((artworks, galleryId) => {
+        console.log("갤러리별 작품 수 매핑 결과 (중복 허용):");
+        galleryArtworkCountMap.forEach((count, galleryId) => {
           const gallery = galleries.find(g => g.id === galleryId);
-          console.log(`  갤러리 ${galleryId} (${gallery?.name || '알 수 없음'}): 고유 작품 ${artworks.size}개`);
+          console.log(`  갤러리 ${galleryId} (${gallery?.name || '알 수 없음'}): 작품 ${count}개 (중복 포함)`);
         });
 
         // 갤러리별 작품 수 카운트
         // 작품별로 exhibition_id를 확인하고, 그 exhibition_id가 어느 갤러리에 속하는지 전부 확인
-        console.log("=== 갤러리별 작품 카운트 시작 ===");
+        // 중복 카운트 허용: 같은 작품이 여러 전시에 속하면 각각 카운트
+        console.log("=== 갤러리별 작품 카운트 시작 (중복 허용) ===");
         
         // 갤러리별 전시 수 카운트 (전시 목록에서)
         const galleryExhibitionCountMap = new Map<number, number>();
@@ -246,11 +245,10 @@ export default function AdminDashboard() {
           // 전시 수는 전시 목록에서 계산
           const exhibitionCount = galleryExhibitionCountMap.get(gallery.id) || 0;
           
-          // 작품 수는 작품별로 exhibition_id를 확인해서 gallery_id로 매핑한 결과 사용
-          const uniqueArtworks = galleryArtworkCountMap.get(gallery.id) || new Set<string>();
-          const artworkCount = uniqueArtworks.size;
+          // 작품 수는 작품별로 exhibition_id를 확인해서 gallery_id로 매핑한 결과 사용 (중복 허용)
+          const artworkCount = galleryArtworkCountMap.get(gallery.id) || 0;
 
-          console.log(`갤러리 ${gallery.id} (${gallery.name}): 전시 ${exhibitionCount}개, 고유 작품 ${artworkCount}개`);
+          console.log(`갤러리 ${gallery.id} (${gallery.name}): 전시 ${exhibitionCount}개, 작품 ${artworkCount}개 (중복 포함)`);
 
           return {
             gallery,
