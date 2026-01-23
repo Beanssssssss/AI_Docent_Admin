@@ -249,7 +249,9 @@ export default function ArtworksPage() {
         embedding: "",
       });
       // 검색 필드로 필터링되므로 전체 작품 다시 로드
-      loadAllArtworks();
+      const updatedArtworks = await fetchAllArtworks();
+      setArtworks(updatedArtworks);
+      setFilteredArtworks(updatedArtworks);
     } catch (error) {
       console.error("저장 실패:", error);
       alert("저장에 실패했습니다. 백엔드 API가 구현되었는지 확인해주세요.");
@@ -321,7 +323,9 @@ export default function ArtworksPage() {
       await deleteArtwork(id);
       alert("작품이 삭제되었습니다.");
       // 전체 작품 다시 로드
-      loadAllArtworks();
+      const updatedArtworks = await fetchAllArtworks();
+      setArtworks(updatedArtworks);
+      setFilteredArtworks(updatedArtworks);
     } catch (error) {
       console.error("삭제 실패:", error);
       alert("삭제에 실패했습니다. 백엔드 API가 구현되었는지 확인해주세요.");
