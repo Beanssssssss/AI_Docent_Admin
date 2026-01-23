@@ -16,11 +16,13 @@ type GalleryStats = {
   gallery: Gallery;
   exhibitionCount: number;
   artworkCount: number;
+  noExhibitionArtworkCount: number; // 비전시 작품 수
 };
 
 type ExhibitionStats = {
   exhibition: Exhibition;
   artworkCount: number;
+  noExhibitionArtworkCount?: number; // 비전시 작품 수 (전시별 통계에서만 사용)
 };
 
 type ExhibitionFilter = "all" | "is_now" | "show";
@@ -32,6 +34,7 @@ export default function AdminDashboard() {
   const [allExhibitionStats, setAllExhibitionStats] = useState<ExhibitionStats[]>([]);
   const [galleries, setGalleries] = useState<Gallery[]>([]);
   const [exhibitionFilter, setExhibitionFilter] = useState<ExhibitionFilter>("all");
+  const [noExhibitionArtworkCount, setNoExhibitionArtworkCount] = useState(0);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -149,6 +152,9 @@ export default function AdminDashboard() {
         // 중복 카운트 허용: 같은 작품이 여러 전시에 속하면 각각 카운트
         const galleryArtworkCountMap = new Map<number, number>(); // gallery_id -> 작품 수 (중복 허용)
         
+        // 비전시 작품 수 카운트 (exhibition_id가 null이거나 전시를 찾을 수 없는 작품)
+        let noExhibitionArtworkCount = 0;
+        
         // 작품별로 전부 확인: 작품 -> exhibition_id -> Exhibition -> gallery_id -> Gallery
         console.log("=== 작품별 갤러리 매핑 시작 ===");
         console.log(`전시 맵 크기: ${exhibitionMap.size}, 전시 목록:`, Array.from(exhibitionMap.keys()).slice(0, 10));
@@ -167,6 +173,7 @@ export default function AdminDashboard() {
         allArtworks.forEach((artwork, index) => {
           if (!artwork.exhibition_id) {
             artworkNoExhibitionIdCount++;
+            noExhibitionArtworkCount++; // 비전시 작품 카운트
             if (index < 5) {
               console.warn(`작품 ${artwork.id} (${artwork.title}): exhibition_id가 없음`);
             }
@@ -175,6 +182,7 @@ export default function AdminDashboard() {
           
           const exhibitionId = Number(artwork.exhibition_id);
           if (isNaN(exhibitionId)) {
+            noExhibitionArtworkCount++; // 비전시 작품 카운트
             console.warn(`작품 ${artwork.id} (${artwork.title}): exhibition_id가 숫자가 아님: ${artwork.exhibition_id}`);
             return;
           }
@@ -188,6 +196,7 @@ export default function AdminDashboard() {
           const exhibition = exhibitionMap.get(exhibitionId);
           if (!exhibition) {
             artworkExhibitionNotFoundCount++;
+            noExhibitionArtworkCount++; // 비전시 작품 카운트
             if (index < 10) {
               console.warn(`작품 ${artwork.id} (${artwork.title}): 전시 ${exhibitionId}를 찾을 수 없음. 전시 맵에 있는 ID:`, Array.from(exhibitionMap.keys()).slice(0, 10));
             }
@@ -215,6 +224,7 @@ export default function AdminDashboard() {
         console.log(`  exhibition_id 없음: ${artworkNoExhibitionIdCount}개`);
         console.log(`  전시를 찾을 수 없음: ${artworkExhibitionNotFoundCount}개`);
         console.log(`  gallery_id 없음: ${artworkNoGalleryIdCount}개`);
+        console.log(`  비전시 작품: ${noExhibitionArtworkCount}개`);
 
         console.log("전시별 작품 수 매핑 결과:");
         exhibitionArtworkCountMap.forEach((count, exhibitionId) => {
@@ -254,11 +264,13 @@ export default function AdminDashboard() {
             gallery,
             exhibitionCount,
             artworkCount,
+            noExhibitionArtworkCount: 0, // 갤러리별로는 비전시 작품이 없음 (전시에 속하지 않은 작품)
           };
         });
         
         console.log("=== 갤러리별 작품 카운트 완료 ===");
         setGalleryStats(galleryStatsData);
+        setNoExhibitionArtworkCount(noExhibitionArtworkCount);
 
         // 전시별 상세 통계
         // 작품 -> exhibition_id -> Exhibition 매핑 사용
@@ -281,8 +293,32 @@ export default function AdminDashboard() {
           return {
             exhibition,
             artworkCount,
+            noExhibitionArtworkCount: 0, // 전시별로는 비전시 작품이 없음
           };
         });
+        
+        // 비전시 작품 통계 추가
+        const noExhibitionStats: ExhibitionStats = {
+          exhibition: {
+            id: -1,
+            gallery_id: -1,
+            name: "비전시 작품",
+            description: "전시에 속하지 않은 작품",
+            info: "",
+            start_date: "",
+            end_date: "",
+            is_now: false,
+            show: false,
+            location: "",
+          } as Exhibition,
+          artworkCount: noExhibitionArtworkCount,
+          noExhibitionArtworkCount: noExhibitionArtworkCount,
+        };
+        
+        // 비전시 작품이 있으면 통계에 추가
+        if (noExhibitionArtworkCount > 0) {
+          exhibitionStatsData.push(noExhibitionStats);
+        }
         
         // 작품 수 기준으로 내림차순 정렬
         exhibitionStatsData.sort((a, b) => b.artworkCount - a.artworkCount);
@@ -389,6 +425,25 @@ export default function AdminDashboard() {
                       </td>
                     </tr>
                   ))}
+                  {/* 비전시 작품 행 추가 */}
+                  {noExhibitionArtworkCount > 0 && (
+                    <tr className="bg-gray-50">
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <div className="text-sm font-medium text-gray-900">
+                          비전시 작품
+                        </div>
+                        <div className="text-sm text-gray-500">
+                          전시에 속하지 않은 작품
+                        </div>
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
+                        -
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600 font-medium">
+                        {noExhibitionArtworkCount}
+                      </td>
+                    </tr>
+                  )}
                 </tbody>
               </table>
             </div>
@@ -456,6 +511,33 @@ export default function AdminDashboard() {
                 </thead>
                 <tbody className="bg-white divide-y divide-gray-200">
                   {exhibitionStats.map((item) => {
+                    // 비전시 작품 행은 특별 처리
+                    if (item.exhibition.id === -1) {
+                      return (
+                        <tr key="no-exhibition" className="bg-gray-50">
+                          <td className="px-6 py-4 whitespace-nowrap">
+                            <div className="text-sm font-medium text-gray-900">
+                              비전시 작품
+                            </div>
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
+                            -
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
+                            -
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap">
+                            <span className="px-2 py-1 text-xs bg-red-100 text-red-800 rounded">
+                              비전시
+                            </span>
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600 font-medium">
+                            {item.artworkCount}
+                          </td>
+                        </tr>
+                      );
+                    }
+                    
                     const gallery = galleries.find(g => g.id === item.exhibition.gallery_id);
                     return (
                       <tr key={item.exhibition.id}>
